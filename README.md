@@ -87,5 +87,6 @@ Controller → Service → Repository → Entity → Database
 
 ## 👨‍💻 Autor
 
-[Tu nombre]
+[JOHAN PIEDRA]
+
 
