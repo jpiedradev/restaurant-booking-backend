@@ -3,6 +3,7 @@ package com.restaurant.booking.service;
 import com.restaurant.booking.model.User;
 import com.restaurant.booking.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +15,7 @@ import java.util.List;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     /**
      * Obtiene todos los usuarios
@@ -31,7 +33,8 @@ public class UserService {
     }
 
     /**
-     * Crea un nuevo usuario
+     * Crea un nuevo usuario (solo para ADMIN)
+     * Los usuarios regulares usan /api/auth/register
      */
     public User createUser(User user) {
         // Validar email único
@@ -44,10 +47,19 @@ public class UserService {
             throw new RuntimeException("El username ya está en uso: " + user.getUsername());
         }
 
-        // Por defecto, nuevo usuario es CUSTOMER
+        // IMPORTANTE: Encriptar la contraseña
+        if (user.getPassword() != null && !user.getPassword().isEmpty()) {
+            user.setPassword(passwordEncoder.encode(user.getPassword()));
+        }
+
+        // Si no se especifica rol, CUSTOMER por defecto
         if (user.getRole() == null || user.getRole().isEmpty()) {
             user.setRole("CUSTOMER");
         }
+
+        // Activar cuenta por defecto
+        user.setEnabled(true);
+        user.setAccountNonLocked(true);
 
         return userRepository.save(user);
     }

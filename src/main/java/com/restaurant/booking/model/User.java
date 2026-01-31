@@ -21,7 +21,7 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotBlank(message = "El nombre de usuario es obligatorio")
+    @NotBlank(message = "El username es obligatorio")
     @Column(unique = true, nullable = false)
     private String username;
 
@@ -34,12 +34,11 @@ public class User {
     @Column(name = "full_name", nullable = false)
     private String fullName;
 
-    @NotBlank(message = "El teléfono es obligatorio")
     @Pattern(regexp = "^[0-9]{9,15}$", message = "El teléfono debe tener entre 9 y 15 dígitos")
-    @Column(nullable = false)
     private String phone;
 
-    // Por ahora sin encriptar, lo haremos cuando añadamos Spring Security
+    @NotBlank(message = "La contraseña es obligatoria")
+    @Column(nullable = false)
     private String password;
 
     @Column(nullable = false)
@@ -47,6 +46,14 @@ public class User {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    // NUEVO: Campo para activar/desactivar usuarios
+    @Column(nullable = false)
+    private Boolean enabled = true;
+
+    // NUEVO: Campo para bloquear cuentas
+    @Column(nullable = false)
+    private Boolean accountNonLocked = true;
 
     @PrePersist
     protected void onCreate() {
