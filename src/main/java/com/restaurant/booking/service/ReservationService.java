@@ -27,6 +27,7 @@ public class ReservationService {
     private final ReservationRepository reservationRepository;
     private final UserRepository userRepository;
     private final RestaurantTableRepository tableRepository;
+    private final EmailService emailService;
 
     // ==================== MÉTODOS CRUD ====================
 
@@ -47,6 +48,33 @@ public class ReservationService {
         Reservation reservation = reservationRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Reserva no encontrada con ID: " + id));
         return convertToDTO(reservation);
+    }
+
+    /**
+     * Obtiene todas las reservas de un usuario por su username
+     */
+    public List<ReservationDTO> getReservationsByUsername(String username) {
+        // Buscar el usuario por username
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("Usuario no encontrado: " + username));
+
+        // Obtener sus reservas
+        List<Reservation> reservations = reservationRepository.findByUserId(user.getId());
+
+        // Convertir a DTO
+        return reservations.stream()
+                .map(this::convertToDTO)
+                .toList();
+    }
+
+    /**
+     * Obtiene todas las reservas de un usuario específico por ID
+     */
+    public List<ReservationDTO> getReservationsByUserId(Long userId) {
+        List<Reservation> reservations = reservationRepository.findByUserId(userId);
+        return reservations.stream()
+                .map(this::convertToDTO)
+                .toList();
     }
 
     /**
@@ -94,6 +122,16 @@ public class ReservationService {
         reservation.setStatus(ReservationStatus.PENDING);
 
         Reservation savedReservation = reservationRepository.save(reservation);
+        // NUEVO: Enviar email de confirmación de reserva creada
+        try {
+            emailService.sendReservationCreatedEmail(
+                    user,
+                    savedReservation,
+                    table.getTableNumber().toString()
+            );
+        } catch (Exception e) {
+            System.err.println("Error al enviar email de reserva creada: " + e.getMessage());
+        }
         return convertToDTO(savedReservation);
     }
 
@@ -104,32 +142,50 @@ public class ReservationService {
         Reservation reservation = reservationRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Reserva no encontrada con ID: " + id));
 
+        ReservationStatus oldStatus = reservation.getStatus();
         reservation.setStatus(status);
+        RestaurantTable table = reservation.getTable();
+
 
         // Si se cancela o completa, liberar la mesa
         if (status == ReservationStatus.CANCELLED ||
                 status == ReservationStatus.COMPLETED ||
                 status == ReservationStatus.NO_SHOW) {
 
-            RestaurantTable table = reservation.getTable();
+            table = reservation.getTable();
             table.setStatus(TableStatus.AVAILABLE);
             tableRepository.save(table);
         }
 
         // Si se confirma o se sienta, marcar mesa como ocupada/reservada
         if (status == ReservationStatus.CONFIRMED) {
-            RestaurantTable table = reservation.getTable();
+            table = reservation.getTable();
             table.setStatus(TableStatus.RESERVED);
             tableRepository.save(table);
         }
 
         if (status == ReservationStatus.SEATED) {
-            RestaurantTable table = reservation.getTable();
+            table = reservation.getTable();
             table.setStatus(TableStatus.OCCUPIED);
             tableRepository.save(table);
         }
 
         Reservation updatedReservation = reservationRepository.save(reservation);
+
+        // NUEVO: Enviar email según el cambio de estado
+        try {
+            User user = reservation.getUser();
+            String tableNumber = table.getTableNumber().toString();
+
+            // Si cambió de PENDING a CONFIRMED
+            if (oldStatus == ReservationStatus.PENDING && status == ReservationStatus.CONFIRMED) {
+                emailService.sendReservationConfirmedEmail(user, updatedReservation, tableNumber);
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error al enviar email de cambio de estado: " + e.getMessage());
+        }
+
         return convertToDTO(updatedReservation);
     }
 
@@ -137,7 +193,34 @@ public class ReservationService {
      * Cancela una reserva
      */
     public ReservationDTO cancelReservation(Long id) {
-        return updateReservationStatus(id, ReservationStatus.CANCELLED);
+        Reservation reservation = reservationRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Reserva no encontrada con ID: " + id));
+
+        // Solo se pueden cancelar reservas PENDING o CONFIRMED
+        if (reservation.getStatus() != ReservationStatus.PENDING &&
+                reservation.getStatus() != ReservationStatus.CONFIRMED) {
+            throw new RuntimeException("Solo se pueden cancelar reservas pendientes o confirmadas");
+        }
+
+        reservation.setStatus(ReservationStatus.CANCELLED);
+
+        // Liberar la mesa
+        RestaurantTable table = reservation.getTable();
+        table.setStatus(TableStatus.AVAILABLE);
+        tableRepository.save(table);
+
+        Reservation cancelledReservation = reservationRepository.save(reservation);
+
+        // NUEVO: Enviar email de cancelación
+        try {
+            User user = reservation.getUser();
+            String tableNumber = table.getTableNumber().toString();
+            emailService.sendReservationCancelledEmail(user, cancelledReservation, tableNumber);
+        } catch (Exception e) {
+            System.err.println("Error al enviar email de cancelación: " + e.getMessage());
+        }
+
+        return convertToDTO(cancelledReservation);
     }
 
     /**
@@ -216,7 +299,7 @@ public class ReservationService {
         ReservationDTO dto = new ReservationDTO();
         dto.setId(reservation.getId());
         dto.setUserId(reservation.getUser().getId());
-        dto.setUserName(reservation.getUser().getFullName());
+        dto.setUserName(reservation.getUser().getUsername());
         dto.setUserPhone(reservation.getUser().getPhone());
         dto.setTableId(reservation.getTable().getId());
         dto.setTableNumber(reservation.getTable().getTableNumber());

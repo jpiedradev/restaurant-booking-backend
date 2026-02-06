@@ -37,7 +37,6 @@ public class User {
     @Pattern(regexp = "^[0-9]{9,15}$", message = "El teléfono debe tener entre 9 y 15 dígitos")
     private String phone;
 
-    @NotBlank(message = "La contraseña es obligatoria")
     @Column(nullable = false)
     private String password;
 

@@ -33,6 +33,22 @@ public class UserService {
     }
 
     /**
+     * Obtiene un usuario por su email
+     */
+    public User getUserByEmail(String email) {
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Usuario no encontrado con email: " + email));
+    }
+
+    /**
+     * Obtiene un usuario por su username
+     */
+    public User getUserByUsername(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("Usuario no encontrado con username: " + username));
+    }
+
+    /**
      * Crea un nuevo usuario (solo para ADMIN)
      * Los usuarios regulares usan /api/auth/register
      */
@@ -47,10 +63,13 @@ public class UserService {
             throw new RuntimeException("El username ya está en uso: " + user.getUsername());
         }
 
-        // IMPORTANTE: Encriptar la contraseña
-        if (user.getPassword() != null && !user.getPassword().isEmpty()) {
-            user.setPassword(passwordEncoder.encode(user.getPassword()));
+        // Validar que venga contraseña al crear
+        if (user.getPassword() == null || user.getPassword().isEmpty()) {
+            throw new RuntimeException("La contraseña es obligatoria al crear un usuario");
         }
+
+        // IMPORTANTE: Encriptar la contraseña
+            user.setPassword(passwordEncoder.encode(user.getPassword()));
 
         // Si no se especifica rol, CUSTOMER por defecto
         if (user.getRole() == null || user.getRole().isEmpty()) {
@@ -90,6 +109,7 @@ public class UserService {
         existingUser.setFullName(userDetails.getFullName());
         existingUser.setPhone(userDetails.getPhone());
         existingUser.setRole(userDetails.getRole());
+
 
         return userRepository.save(existingUser);
     }

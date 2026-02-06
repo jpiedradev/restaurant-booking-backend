@@ -3,12 +3,16 @@ package com.restaurant.booking.controller;
 import com.restaurant.booking.dto.CreateReservationRequest;
 import com.restaurant.booking.dto.ReservationDTO;
 import com.restaurant.booking.enums.ReservationStatus;
+import com.restaurant.booking.model.User;
+import com.restaurant.booking.repository.UserRepository;
 import com.restaurant.booking.service.ReservationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -22,144 +26,186 @@ import java.util.List;
 public class ReservationController {
 
     private final ReservationService reservationService;
+    private final UserRepository userRepository;
 
     /**
      * GET /api/reservations
-     * Obtiene todas las reservas
+     * ADMIN y STAFF: Ven todas las reservas
+     * CUSTOMER: Solo ve sus propias reservas
      */
     @GetMapping
-    public ResponseEntity<List<ReservationDTO>> getAllReservations() {
-        List<ReservationDTO> reservations = reservationService.getAllReservations();
-        return ResponseEntity.ok(reservations);
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF', 'CUSTOMER')")
+    public List<ReservationDTO> getAllReservations(Authentication authentication) {
+        String username = authentication.getName();
+        String role = authentication.getAuthorities().iterator().next().getAuthority();
+
+        // Si es CUSTOMER, solo ve sus reservas
+        if (role.equals("ROLE_CUSTOMER")) {
+            return reservationService.getReservationsByUsername(username);
+        }
+
+        // ADMIN y STAFF ven todas
+        return reservationService.getAllReservations();
     }
 
     /**
      * GET /api/reservations/{id}
-     * Obtiene una reserva por ID
+     * Obtener una reserva específica
      */
     @GetMapping("/{id}")
-    public ResponseEntity<ReservationDTO> getReservationById(@PathVariable Long id) {
-        try {
-            ReservationDTO reservation = reservationService.getReservationById(id);
-            return ResponseEntity.ok(reservation);
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF', 'CUSTOMER')")
+    public ResponseEntity<ReservationDTO> getReservationById(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+        ReservationDTO reservation = reservationService.getReservationById(id);
+
+        String username = authentication.getName();
+        String role = authentication.getAuthorities().iterator().next().getAuthority();
+
+        // Si es CUSTOMER, verificar que sea su reserva
+        if (role.equals("ROLE_CUSTOMER") && !reservation.getUserName().equals(username)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
+
+        return ResponseEntity.ok(reservation);
+    }
+
+    /**
+     * GET /api/reservations/my-reservations
+     * Obtener reservas del usuario actual (CUSTOMER)
+     */
+    @GetMapping("/my-reservations")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public List<ReservationDTO> getMyReservations(Authentication authentication) {
+        String username = authentication.getName();
+        return reservationService.getReservationsByUsername(username);
     }
 
     /**
      * GET /api/reservations/user/{userId}
-     * Obtiene reservas de un usuario
+     * Solo ADMIN y STAFF pueden ver reservas de un usuario específico
      */
     @GetMapping("/user/{userId}")
-    public ResponseEntity<List<ReservationDTO>> getReservationsByUser(@PathVariable Long userId) {
-        List<ReservationDTO> reservations = reservationService.getReservationsByUser(userId);
-        return ResponseEntity.ok(reservations);
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+    public List<ReservationDTO> getReservationsByUserId(@PathVariable Long userId) {
+        return reservationService.getReservationsByUserId(userId);
     }
 
     /**
      * GET /api/reservations/date/{date}
-     * Obtiene reservas de una fecha específica
+     * Solo ADMIN y STAFF
      */
     @GetMapping("/date/{date}")
-    public ResponseEntity<List<ReservationDTO>> getReservationsByDate(
-            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        List<ReservationDTO> reservations = reservationService.getReservationsByDate(date);
-        return ResponseEntity.ok(reservations);
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+    public List<ReservationDTO> getReservationsByDate(
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
+    ) {
+        return reservationService.getReservationsByDate(date);
     }
 
     /**
      * GET /api/reservations/between
-     * Obtiene reservas entre dos fechas
+     * Solo ADMIN y STAFF
      */
     @GetMapping("/between")
-    public ResponseEntity<List<ReservationDTO>> getReservationsBetweenDates(
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+    public List<ReservationDTO> getReservationsBetweenDates(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        List<ReservationDTO> reservations = reservationService
-                .getReservationsBetweenDates(startDate, endDate);
-        return ResponseEntity.ok(reservations);
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        return reservationService.getReservationsBetweenDates(startDate, endDate);
     }
 
     /**
      * GET /api/reservations/today/confirmed
-     * Obtiene reservas confirmadas de hoy
+     * Solo ADMIN y STAFF
      */
     @GetMapping("/today/confirmed")
-    public ResponseEntity<List<ReservationDTO>> getTodayConfirmedReservations() {
-        List<ReservationDTO> reservations = reservationService.getTodayConfirmedReservations();
-        return ResponseEntity.ok(reservations);
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+    public List<ReservationDTO> getTodayConfirmedReservations() {
+        return reservationService.getTodayConfirmedReservations();
     }
 
     /**
      * GET /api/reservations/check-availability
-     * Verifica si una mesa está disponible
+     * Público (sin autenticación)
      */
     @GetMapping("/check-availability")
     public ResponseEntity<Boolean> checkAvailability(
             @RequestParam Long tableId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.TIME) LocalTime time) {
-        boolean isAvailable = reservationService.isTableAvailable(tableId, date, time);
-        return ResponseEntity.ok(isAvailable);
+            @RequestParam LocalTime time
+    ) {
+        boolean available = reservationService.isTableAvailable(tableId, date, time);
+        return ResponseEntity.ok(available);
     }
 
     /**
      * POST /api/reservations
-     * Crea una nueva reserva
+     * Todos los roles autenticados pueden crear reservas
      */
     @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF', 'CUSTOMER')")
     public ResponseEntity<ReservationDTO> createReservation(
-            @Valid @RequestBody CreateReservationRequest request) {
-        try {
-            ReservationDTO reservation = reservationService.createReservation(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(reservation);
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().build();
-        }
+            @Valid @RequestBody CreateReservationRequest request
+    ) {
+        ReservationDTO reservation = reservationService.createReservation(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(reservation);
     }
 
     /**
      * PATCH /api/reservations/{id}/status
-     * Actualiza el estado de una reserva
+     * Solo ADMIN y STAFF pueden cambiar estados
      */
     @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
     public ResponseEntity<ReservationDTO> updateReservationStatus(
             @PathVariable Long id,
-            @RequestParam ReservationStatus status) {
-        try {
-            ReservationDTO reservation = reservationService.updateReservationStatus(id, status);
-            return ResponseEntity.ok(reservation);
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
-        }
+            @RequestParam ReservationStatus status
+    ) {
+        ReservationDTO reservation = reservationService.updateReservationStatus(id, status);
+        return ResponseEntity.ok(reservation);
     }
 
     /**
      * PATCH /api/reservations/{id}/cancel
-     * Cancela una reserva
+     * CUSTOMER solo puede cancelar sus propias reservas
+     * ADMIN y STAFF pueden cancelar cualquiera
      */
     @PatchMapping("/{id}/cancel")
-    public ResponseEntity<ReservationDTO> cancelReservation(@PathVariable Long id) {
-        try {
-            ReservationDTO reservation = reservationService.cancelReservation(id);
-            return ResponseEntity.ok(reservation);
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF', 'CUSTOMER')")
+    public ResponseEntity<ReservationDTO> cancelReservation(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+        String username = authentication.getName();
+        String role = authentication.getAuthorities().iterator().next().getAuthority();
+
+        ReservationDTO reservation = reservationService.getReservationById(id);
+
+        // Si es CUSTOMER, verificar que sea su reserva
+        if (role.equals("ROLE_CUSTOMER")) {
+            User currentUser = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+
+            if (!reservation.getUserId().equals(currentUser.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
         }
+
+        ReservationDTO cancelled = reservationService.cancelReservation(id);
+        return ResponseEntity.ok(cancelled);
     }
 
     /**
      * DELETE /api/reservations/{id}
-     * Elimina una reserva
+     * Solo ADMIN puede eliminar reservas
      */
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteReservation(@PathVariable Long id) {
-        try {
-            reservationService.deleteReservation(id);
-            return ResponseEntity.noContent().build();
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
-        }
+        reservationService.deleteReservation(id);
+        return ResponseEntity.noContent().build();
     }
 }

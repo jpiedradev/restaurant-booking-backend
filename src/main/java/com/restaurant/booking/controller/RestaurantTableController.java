@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,105 +22,92 @@ public class RestaurantTableController {
 
     /**
      * GET /api/tables
-     * Obtiene todas las mesas
+     * ADMIN y STAFF pueden ver todas las mesas
      */
     @GetMapping
-    public ResponseEntity<List<TableDTO>> getAllTables() {
-        List<TableDTO> tables = tableService.getAllTables();
-        return ResponseEntity.ok(tables);
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+    public List<TableDTO> getAllTables() {
+        return tableService.getAllTables();
     }
 
     /**
      * GET /api/tables/{id}
-     * Obtiene una mesa por ID
+     * ADMIN y STAFF
      */
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
     public ResponseEntity<TableDTO> getTableById(@PathVariable Long id) {
-        try {
-            TableDTO table = tableService.getTableById(id);
-            return ResponseEntity.ok(table);
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
-        }
+        TableDTO table = tableService.getTableById(id);
+        return ResponseEntity.ok(table);
     }
 
     /**
      * GET /api/tables/available
-     * Obtiene todas las mesas disponibles
+     * ADMIN, STAFF y CUSTOMER (para hacer reservas)
      */
     @GetMapping("/available")
-    public ResponseEntity<List<TableDTO>> getAvailableTables() {
-        List<TableDTO> tables = tableService.getAvailableTables();
-        return ResponseEntity.ok(tables);
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF', 'CUSTOMER')")
+    public List<TableDTO> getAvailableTables() {
+        return tableService.getAvailableTables();
     }
 
     /**
      * GET /api/tables/available/{guests}
-     * Obtiene mesas disponibles con capacidad para X personas
+     * ADMIN, STAFF y CUSTOMER (para hacer reservas)
      */
     @GetMapping("/available/{guests}")
-    public ResponseEntity<List<TableDTO>> getAvailableTablesByCapacity(@PathVariable Integer guests) {
-        List<TableDTO> tables = tableService.getAvailableTablesByCapacity(guests);
-        return ResponseEntity.ok(tables);
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF', 'CUSTOMER')")
+    public List<TableDTO> getAvailableTablesByCapacity(@PathVariable Integer guests) {
+        return tableService.getAvailableTablesByCapacity(guests);
     }
 
     /**
      * POST /api/tables
-     * Crea una nueva mesa
+     * Solo ADMIN puede crear mesas
      */
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<TableDTO> createTable(@Valid @RequestBody TableDTO tableDTO) {
-        try {
-            TableDTO createdTable = tableService.createTable(tableDTO);
-            return ResponseEntity.status(HttpStatus.CREATED).body(createdTable);
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().build();
-        }
+        TableDTO created = tableService.createTable(tableDTO);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     /**
      * PUT /api/tables/{id}
-     * Actualiza una mesa existente
+     * Solo ADMIN puede editar mesas
      */
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<TableDTO> updateTable(
             @PathVariable Long id,
-            @Valid @RequestBody TableDTO tableDTO) {
-        try {
-            TableDTO updatedTable = tableService.updateTable(id, tableDTO);
-            return ResponseEntity.ok(updatedTable);
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
-        }
+            @Valid @RequestBody TableDTO tableDTO
+    ) {
+        TableDTO updated = tableService.updateTable(id, tableDTO);
+        return ResponseEntity.ok(updated);
     }
 
     /**
      * PATCH /api/tables/{id}/status
-     * Actualiza solo el estado de una mesa
+     * ADMIN y STAFF pueden cambiar estado de mesas
      */
     @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
     public ResponseEntity<TableDTO> updateTableStatus(
             @PathVariable Long id,
-            @RequestParam TableStatus status) {
-        try {
-            TableDTO updatedTable = tableService.updateTableStatus(id, status);
-            return ResponseEntity.ok(updatedTable);
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
-        }
+            @RequestParam TableStatus status
+    ) {
+        TableDTO updated = tableService.updateTableStatus(id, status);
+        return ResponseEntity.ok(updated);
     }
 
     /**
      * DELETE /api/tables/{id}
-     * Elimina una mesa
+     * Solo ADMIN puede eliminar mesas
      */
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteTable(@PathVariable Long id) {
-        try {
-            tableService.deleteTable(id);
-            return ResponseEntity.noContent().build();
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
-        }
+        tableService.deleteTable(id);
+        return ResponseEntity.noContent().build();
     }
 }

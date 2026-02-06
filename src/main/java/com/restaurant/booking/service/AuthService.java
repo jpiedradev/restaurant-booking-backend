@@ -26,6 +26,7 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final AuthenticationManager authenticationManager;
     private final UserDetailsService userDetailsService;
+    private final EmailService emailService;
 
     /**
      * Registra un nuevo usuario en el sistema
@@ -47,19 +48,24 @@ public class AuthService {
         user.setEmail(request.getEmail());
         user.setFullName(request.getFullName());
         user.setPhone(request.getPhone());
-
-        // 4. Encriptar la contraseña
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-
-        // 5. Asignar rol por defecto
         user.setRole("CUSTOMER");
-
-        // 6. Activar la cuenta
         user.setEnabled(true);
         user.setAccountNonLocked(true);
 
-        // 7. Guardar en la base de datos
-        return userRepository.save(user);
+        // Guardar en la base de datos
+        User savedUser =  userRepository.save(user);
+
+        //NUEVO: Enviar email de bienvenida
+        try {
+            emailService.sendWelcomeEmail(savedUser);
+        } catch (Exception e) {
+            System.err.println("Error al enviar email de bienvenida: " + e.getMessage());
+            // No lanzamos error, solo registramos en log
+            // El registro fue exitoso aunque falle el email
+        }
+
+        return savedUser;
     }
 
     /**
